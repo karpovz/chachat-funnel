@@ -101,6 +101,11 @@ export const purchaseInputSchema = z.object({
 
 export const purchaseResultSchema = z.object({
   purchaseId: z.string().uuid(),
+  planSlug: z.string(),
+  planName: z.string(),
+  amountMinor: z.number().int().positive(),
+  currency: z.string().length(3),
+  billingDescription: z.string(),
   status: z.enum(["processing", "succeeded", "failed"]),
   attemptNumber: z.number().int().positive().nullable(),
   failureCode: z.string().nullable(),
@@ -123,4 +128,3 @@ export type ApiFailure = {
     fieldErrors?: Record<string, string[]>;
   };
 };
-

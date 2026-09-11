@@ -87,3 +87,13 @@ Every implementation task includes this contract:
 
 This log should be updated only with work that actually occurred.
 
+
+- 2026-09-11: continued in native WSL, removed only the verified partial node_modules directory, installed Node.js 22.23.2 and pnpm 10.15.0, and created pnpm-lock.yaml.
+- 2026-09-11: corrected ESLint plugin compatibility to ESLint 9.39.4; scaffold typecheck, lint, and production build passed. Committed scaffold separately as 8e49030; e71599b remains intact.
+- 2026-09-11: started bounded frontend, backend, and infrastructure implementation agents under the ownership rules above. Primary owns integration, manifests, README, and final verification.
+- 2026-09-11: Docker Desktop WSL integration enabled by the user and daemon access verified. Added Playwright as an approved development dependency for browser acceptance coverage.
+- 2026-09-11: primary approved one shared contract extension: purchase responses include `planSlug`, allowing a refreshed checkout to display the actual reserved plan. Purchase price snapshots remain immutable across retries.
+- 2026-09-11: acceptance tests exposed Prisma's unsupported void advisory-lock result during email resolution; primary cast the lock result to text, then all 26 unit/PostgreSQL tests and the API smoke passed.
+- 2026-09-11: extended purchase responses with the stored name, amount, currency, and billing description as well as slug. Checkout now displays the immutable snapshot after refresh even if live plan data changes.
+- 2026-09-11: final default `docker compose up --build -d` created a fresh database volume, applied migrations automatically, and started healthy app/PostgreSQL services. API smoke, 26 unit/PostgreSQL tests, five README SQL queries, and Compose log privacy scan passed.
+- 2026-09-11: mobile Chromium verified happy path, failure retries, and refresh during processing; landing visual reviews at 390px and 1440px found no overflow or browser errors. README and handoff record reproducible checks and remaining demo limitations.

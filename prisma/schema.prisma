@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  email String
+  normalizedEmail String @unique @map("normalized_email")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  sessions FunnelSession[]
+  visitors Visitor[]
+  purchases Purchase[]
+  @@map("users")
+}
+model Visitor {
+  id String @id @default(uuid()) @db.Uuid
+  lastResolvedUserId String? @map("last_resolved_user_id") @db.Uuid
+  user User? @relation(fields:[lastResolvedUserId], references:[id])
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz
+  sessions FunnelSession[]
+  @@map("visitors")
+}
+model FunnelSession {
+  id String @id @default(uuid()) @db.Uuid
+  visitorId String @map("visitor_id") @db.Uuid
+  visitor Visitor @relation(fields:[visitorId], references:[id])
+  userId String? @map("user_id") @db.Uuid
+  user User? @relation(fields:[userId], references:[id])
+  funnelVersion String @map("funnel_version")
+  currentStep String @default("landing") @map("current_step")
+  landingUrl String @map("landing_url")
+  referrer String?
+  utmSource String? @map("utm_source")
+  utmMedium String? @map("utm_medium")
+  utmCampaign String? @map("utm_campaign")
+  utmContent String? @map("utm_content")
+  utmTerm String? @map("utm_term")
+  userAgent String? @map("user_agent")
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  answers QuizAnswer[]
+  events Event[]
+  purchase Purchase?
+  @@map("funnel_sessions")
+}
+model Event {
+  id String @id @default(uuid()) @db.Uuid
+  clientEventId String? @unique @map("client_event_id") @db.Uuid
+  visitorId String @map("visitor_id") @db.Uuid
+  sessionId String @map("session_id") @db.Uuid
+  session FunnelSession @relation(fields:[sessionId], references:[id])
+  userId String? @map("user_id") @db.Uuid
+  name String
+  screen String?
+  stepIndex Int? @map("step_index")
+  funnelVersion String @map("funnel_version")
+  properties Json @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz
+  @@index([name, occurredAt])
+  @@index([sessionId, occurredAt])
+  @@index([userId, occurredAt])
+  @@map("events")
+}
+model QuizAnswer {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @map("session_id") @db.Uuid
+  session FunnelSession @relation(fields:[sessionId], references:[id])
+  questionId String @map("question_id")
+  answerIds Json @map("answer_ids")
+  answeredAt DateTime @default(now()) @map("answered_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  @@unique([sessionId, questionId])
+  @@map("quiz_answers")
+}
+model Plan {
+  id String @id @default(uuid()) @db.Uuid
+  slug String @unique
+  name String
+  amountMinor Int @map("amount_minor")
+  currency String @db.Char(3)
+  billingDescription String @map("billing_description")
+  isActive Boolean @default(true) @map("is_active")
+  sortOrder Int @map("sort_order")
+  purchases Purchase[]
+  @@map("plans")
+}
+model Purchase {
+  id String @id @default(uuid()) @db.Uuid
+  checkoutKey String @unique @default(uuid()) @map("checkout_key") @db.Uuid
+  sessionId String @unique @map("session_id") @db.Uuid
+  session FunnelSession @relation(fields:[sessionId], references:[id])
+  userId String @map("user_id") @db.Uuid
+  user User @relation(fields:[userId], references:[id])
+  planId String @map("plan_id") @db.Uuid
+  plan Plan @relation(fields:[planId], references:[id])
+  planName String @map("plan_name")
+  planSlug String @map("plan_slug")
+  amountMinor Int @map("amount_minor")
+  currency String @db.Char(3)
+  billingDescription String @map("billing_description")
+  status String @default("created")
+  failureCode String? @map("failure_code")
+  failureMessage String? @map("failure_message")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  succeededAt DateTime? @map("succeeded_at") @db.Timestamptz
+  attempts PaymentAttempt[]
+  @@map("purchases")
+}
+model PaymentAttempt {
+  id String @id @default(uuid()) @db.Uuid
+  purchaseId String @map("purchase_id") @db.Uuid
+  purchase Purchase @relation(fields:[purchaseId], references:[id])
+  idempotencyKey String @unique @map("idempotency_key") @db.Uuid
+  attemptNumber Int @map("attempt_number")
+  status String
+  cardBrand String? @map("card_brand")
+  cardLast4 String? @map("card_last4")
+  processorReference String? @map("processor_reference")
+  failureCode String? @map("failure_code")
+  failureMessage String? @map("failure_message")
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz
+  durationMs Int? @map("duration_ms")
+  @@unique([purchaseId, attemptNumber])
+  @@map("payment_attempts")
+}
