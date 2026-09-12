@@ -2,9 +2,9 @@
 
 Status: approved for implementation
 
-Version: 1.1
+Version: 1.2
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## 1. Goal
 
@@ -237,6 +237,13 @@ Every event contains the identifiers and timestamps described above. No event ma
 
 Analytics ingestion is at-least-once. A repeated `client_event_id` returns success without inserting another row.
 
+### Durable delivery contract (2026-09-12)
+
+- Client events are committed to a shared IndexedDB queue before delivery. Closing a tab preserves pending events; the next visit resumes delivery for the same server-confirmed session using the original `client_event_id` values.
+- Queue insertion and acknowledgement use transactions on individual records. Concurrent tabs may deliver the same event, which the server deduplicates, but cannot overwrite another tab's pending events. Only an acknowledged or permanently rejected record is removed.
+- Existing per-tab event queues are imported into IndexedDB before their old storage is cleared. Bootstrap verifies queue storage is available; unavailable browser storage produces a retryable initialization error.
+- Delivery always includes the queued event's expected session. Events belonging to another session are retained and never reassigned to the current cookie session. Clearing/evicting browser storage or never returning before delivery can still prevent client-event recovery.
+
 ### Audit remediation contracts (2026-09-11)
 
 - First browser bootstrap is serialized across tabs with a Web Lock, with an IndexedDB lease fallback. The lock covers the entire session response, including cookie application. If coordination is unavailable, show a retryable initialization error instead of racing cookie creation.
@@ -301,6 +308,7 @@ Only brand and last four digits may survive the processor boundary.
 - Two tabs cannot process two attempts simultaneously or create two purchases for the same session.
 - Refresh during processing recovers through the current-purchase endpoint.
 - Repeated analytics delivery does not duplicate an event.
+- Undelivered analytics survive closing all funnel tabs and are delivered once after the same browser returns; concurrent tabs preserve each other's queued events.
 - Existing email resolves to the existing user and retains the new session's pre-email history.
 - UTM, referrer, and landing URL are queryable from the first session.
 - Direct access to install without success is rejected or redirected.

@@ -1,6 +1,6 @@
 # Implementation Handoff
 
-Updated: 2026-09-11
+Updated: 2026-09-12
 
 ## Delivered
 
@@ -8,12 +8,14 @@ The nine-screen ChaChat funnel, PostgreSQL identity and analytics, database-pric
 
 - Specification-first commit: `e71599b` (`spec: define funnel architecture and invariants`), preserved.
 - Verified scaffold commit: `8e49030` (`scaffold: add verified Next.js app and shared API contracts`).
-- Three bounded implementation agents worked only in their assigned frontend, backend, and infrastructure paths. Primary integrated shared contracts and final fixes. The remediation remains in the working tree; no commits or other Git mutations were performed during audit/remediation.
+- Three bounded implementation agents worked only in their assigned frontend, backend, and infrastructure paths. Primary integrated shared contracts and final fixes. The D1–D9 remediation is included in commit `c96bded`; this supersedes the earlier note about an uncommitted working tree. No Git mutations were performed by the agent during this follow-up.
+- The follow-up moves client analytics to a shared IndexedDB queue, imports legacy tab queues, and restores pending delivery after tabs close. Per-record transactions preserve concurrent tab writes and server deduplication covers lost acknowledgements.
+- Total time spent: **8 hours**, as supplied by the author for submission. The README includes the repository link and evaluator walkthrough.
 
 ## Environment and running app
 
 - Work was performed in native WSL at `/home/zahar/project/chachat-funnel`.
-- Node.js 22.23.2 and pnpm 10.15.0 were installed for this session under `/tmp/chachat-toolchain/node_modules/.bin`; use that PATH for this temporary toolchain. A persistent host setup should install Node.js 22 normally.
+- The original implementation used Node.js 22.23.2 and pnpm 10.15.0. Docker supplies the required toolchain; optional host development should use Node.js 22 and the pinned pnpm version from the README.
 - Docker Desktop WSL integration is enabled. Docker access and Next.js build required execution outside the agent sandbox.
 - The default Compose project `chachat-funnel` runs the corrected build at http://localhost:3000. App and PostgreSQL are healthy; migration service exits successfully. Existing data counts remained unchanged during update.
 - The earlier isolated verification project was stopped without deleting its evidence volume (`chachat-verify-20260911_postgres_data`).
@@ -24,13 +26,13 @@ The nine-screen ChaChat funnel, PostgreSQL identity and analytics, database-pric
 - `sh scripts/qa.sh`: passed in a disposable Compose project, including production build, frozen dependency installation, Prisma generation, both migrations on an empty database and migration replay, formatting, type generation/TypeScript, and ESLint.
 - Vitest with PostgreSQL: **39/39 passed** (19 processor, 10 database invariants, eight HTTP/session tests, two Prisma config security/compatibility tests).
 - `scripts/smoke.mjs`: passed against the isolated app, including concurrency, stored replay, terminal success, decline/timeout retries, normalized email reuse, first-touch acquisition, event deduplication, authoritative money, and persistence privacy.
-- Mobile Chromium: **12/12 passed**, including both first-tab coordination mechanisms, stale polling, pending-plan recovery before server claim, changed email, rejected events, default selection, retired plans, and browser history.
+- Mobile Chromium: **16/16 passed** on 2026-09-12, including both first-tab coordination mechanisms, stale polling, pending-plan recovery before server claim, changed email, rejected events, default selection, retired plans, browser history, durable delivery across tab closure, lost acknowledgements, legacy queue import, session isolation, and blocked browser storage.
 - All five executable README SQL queries passed in read-only transactions; the Compose log privacy scan passed.
-- `sh scripts/qa.sh audit`: passed with no known vulnerabilities and no advisory suppression.
-- Docker development startup and source-update verification: passed on separate ports/database. The temporary route and project were removed.
+- `sh scripts/qa.sh audit`: passed on 2026-09-11 with no known vulnerabilities and no advisory suppression. The follow-up adds no dependencies.
+- Docker development startup and source-update verification: passed on 2026-09-11 on separate ports/database. The temporary route and project were removed.
 - `docker compose up --build --detach --wait`: passed for the ordinary application after verification; existing database records were retained.
 
-Exact commands are in the README. Mutation tests must run in the isolated QA project. Snapshot tests create their own temporary plans and never modify the seeded catalog. GitHub Actions contains the same QA/audit commands but has not been run remotely because these changes have not been published.
+Exact commands are in the README. Mutation tests must run in the isolated QA project. Snapshot tests create their own temporary plans and never modify the seeded catalog. GitHub Actions contains the same QA/audit commands; remote run results are not verified by this local handoff.
 
 ## Integration decisions
 
@@ -44,4 +46,4 @@ Exact commands are in the README. Mutation tests must run in the isolated QA pro
 
 ## Remaining limitations
 
-This is intentionally a simulated checkout and unverified email identity flow. No real charge, subscription entitlement, authentication, or email delivery is provided. Pending client events survive refresh in per-tab storage but may be lost if the tab closes before delivery. Production hardening and broader browser/accessibility testing are described in the README.
+This is intentionally a simulated checkout and unverified email identity flow. No real charge, subscription entitlement, authentication, or email delivery is provided. Pending client events survive tab closure in IndexedDB and resume for the same session on a later visit. Clearing/evicting browser storage or never returning after interrupted delivery can still prevent recovery. Production hardening and broader browser/accessibility testing are described in the README.

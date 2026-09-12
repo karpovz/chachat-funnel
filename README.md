@@ -23,6 +23,8 @@ The volume reset permanently deletes this Compose project's saved demo data. Cle
 
 ## Evaluator walkthrough
 
+**Time spent: 8 hours.** Start with [the specification](docs/SPEC.md), then review the payment flow in `src/server/payments.ts` and run the walkthrough below. The Git repository is [karpovz/chachat-funnel](https://github.com/karpovz/chachat-funnel). This is a local demo with a fake processor; deliberate cuts and remaining limitations are listed at the end.
+
 1. Open `http://localhost:3000/?utm_source=evaluator&utm_campaign=demo` in a fresh browser context.
 2. Confirm you are 18+, answer all five questions, and enter an email. Back navigation retains answers.
 3. Review Monthly ($29.99), Annual ($59.99, default), and Lifetime ($89.99). These are database prices.
@@ -49,6 +51,8 @@ The browser begins anonymously with HTTP-only, same-site visitor/session cookies
 First initialization is serialized across tabs with Web Locks (IndexedDB coordination is the fallback). Later API calls include the expected session ID as an additional consistency check; cookies still authorize access. A changed cookie session is rejected instead of receiving another tab's history. Sessions, including successful checkout, resume for the 90-day absolute cookie lifetime. Tomorrow's visit resumes its original acquisition; cookie expiry/reset starts another anonymous session. Breaking quiz-version changes require an explicit migration or restart policy.
 
 Client analytics use stable UUID delivery IDs with a database unique constraint. Server-owned identity, quiz, and payment events use server timestamps. Event properties are restricted so checkout secrets and email cannot be copied into analytics. Prices and purchase snapshots come from database plans.
+
+Client events are saved in IndexedDB before sending. Pending events survive closing all funnel tabs and resume delivery when the same browser/session returns. Individual transactional inserts/deletes let concurrent tabs share the queue without overwriting one another; repeated delivery, including a lost acknowledgement, is deduplicated by the server. Existing per-tab queues are imported before their old copy is cleared. Bootstrap verifies browser storage is available and offers a retry if it is blocked. Events from an older cookie session are never reassigned to a new one.
 
 Automatic plan selection is recorded once per session with `source=default`; manual choices use `source=manual`. Permanently invalid analytics events produce bounded diagnostics containing only their ID/name and a fixed rejection code, and later valid events continue. Network and session failures retain events for recovery. Confirming age uses a separate transactional API call, so an analytics backlog cannot block the funnel.
 
@@ -107,13 +111,13 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-Browser tests cover the full funnel, guarded install, answer persistence, decline/timeout retry, refresh during processing, concurrent first tabs (including IndexedDB fallback), stale payment responses, changed email, rejected analytics, default selection, reserved plans, and browser Back/Forward. The Docker QA image installs the exact browser matching Playwright. For a host-only run on minimal Linux, install system dependencies with `pnpm exec playwright install --with-deps chromium` and set `BASE_URL` to a disposable test app.
+Browser tests cover the full funnel, guarded install, answer persistence, decline/timeout retry, refresh during processing, concurrent first tabs (including IndexedDB fallback), stale payment responses, changed email, rejected analytics, default selection, reserved plans, and browser Back/Forward. Durable analytics regressions cover closing/reopening multiple tabs, lost acknowledgements, migration of old queues, session isolation, and blocked browser storage. The Docker QA image installs the exact browser matching Playwright. For a host-only run on minimal Linux, install system dependencies with `pnpm exec playwright install --with-deps chromium` and set `BASE_URL` to a disposable test app.
 
 Prisma remains pinned to 6.19.3. A scoped pnpm override updates only its config loader's `deepmerge-ts` to 8.0.0 to fix GHSA-ggr8-5vv4-36mx. The used plain-record merge API is covered by cyclic-input and real config-loading regression tests; generation/migrations/build are also verified. Remove the override when upstream incorporates the fix. No security advisory is suppressed. Stable Prisma 7.10.0 still used the affected dependency when this decision was made; changing ORM major alone did not resolve it.
 
 ## Verification evidence
 
-Verified after audit fixes on 2026-09-11: the full isolated Docker QA command passed with production build, automatic migrations, formatting, lint/typecheck, **39 unit/PostgreSQL tests**, API/persistence smoke, **12 mobile Chromium scenarios**, five README SQL queries, and the Compose log secret scan. The Docker development profile also passed startup and live source-update checks. See [the remediation report](docs/REMEDIATION.md), [the handoff](docs/HANDOFF.md), and [the workflow log](docs/AI_WORKFLOW.md).
+Verified after the durable analytics follow-up on 2026-09-12: the full isolated Docker QA command passed with production build, automatic migrations, formatting, lint/typecheck, **39 unit/PostgreSQL tests**, API/persistence smoke, **16 mobile Chromium scenarios**, five README SQL queries, and the Compose log secret scan. The Docker development profile passed startup and live source-update checks on 2026-09-11. See [the remediation report](docs/REMEDIATION.md), [the handoff](docs/HANDOFF.md), and [the workflow log](docs/AI_WORKFLOW.md).
 
 ## Analytics SQL
 
@@ -203,6 +207,6 @@ ORDER BY u.normalized_email, s.started_at, e.occurred_at;
 
 There is no real payment provider, authentication, email delivery, analytics dashboard, CMS, localization, or deployment setup. The character match is a lightweight copy personalization, not a psychological assessment. Product grounding and acceptance criteria are in [the specification](docs/SPEC.md).
 
-For production, replace the simulator with provider tokenization and webhook reconciliation, add verified account access, abuse controls, operational monitoring, privacy/retention policy, and a durable processor recovery worker. Broaden browser/accessibility coverage and test under sustained database contention. Pending client analytics survive refresh in per-tab session storage; closing a tab before delivery can discard them. A production durable queue would strengthen delivery across tab closure.
+For production, replace the simulator with provider tokenization and webhook reconciliation, add verified account access, abuse controls, operational monitoring, privacy/retention policy, and a durable processor recovery worker. Broaden browser/accessibility coverage and test under sustained database contention. Client analytics require browser storage and a later online visit to finish pending delivery. Clearing or browser eviction of site storage, or never returning after an interrupted delivery, can still prevent recovery. Closing an ordinary tab preserves the IndexedDB queue.
 
 The specification preceded application code in commit `e71599b`; the verified scaffold is `8e49030`. [AI_WORKFLOW.md](docs/AI_WORKFLOW.md) records file ownership and actual delivery checkpoints.

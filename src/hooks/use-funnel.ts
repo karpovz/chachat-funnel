@@ -132,6 +132,7 @@ export function useFunnel() {
     const flush = () => {
       void flushEvents(sessionId).catch(() => {});
     };
+    flush();
     const timer = setInterval(flush, 5000);
     window.addEventListener("online", flush);
     return () => {

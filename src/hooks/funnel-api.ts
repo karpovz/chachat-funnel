@@ -4,6 +4,11 @@ import {
   type ClientEventInput,
 } from "@/shared/contracts";
 import { copy } from "@/content/funnel";
+import {
+  enqueueEvents,
+  firstQueuedEvent,
+  removeQueuedEvent,
+} from "./event-queue";
 
 const failureSchema = z.object({
   error: z.object({
@@ -114,8 +119,13 @@ const queueSchema = z.array(clientEventInputSchema);
 const rejectionSchema = z.array(
   z.object({ id: z.string().uuid(), name: z.string(), code: z.string() }),
 );
-function queue(sessionId: string) {
-  return readTab(`chachat:events:${sessionId}`, queueSchema) ?? [];
+async function migrateLegacyEvents(sessionId: string) {
+  const key = `chachat:events:${sessionId}`;
+  const legacy = readTab(key, queueSchema) ?? [];
+  if (!legacy.length) return;
+  await enqueueEvents(sessionId, legacy);
+  // A failed/aborted import retains the original per-tab copy for another try.
+  saveTab(key, []);
 }
 function rejectEvent(sessionId: string, event: ClientEventInput, code: string) {
   const key = `chachat:event-rejections:${sessionId}`;
@@ -138,7 +148,7 @@ function rejectEvent(sessionId: string, event: ClientEventInput, code: string) {
     ].slice(-20),
   );
 }
-export function track(
+export async function track(
   sessionId: string,
   event: Omit<ClientEventInput, "clientEventId" | "occurredAt">,
   clientEventId = crypto.randomUUID(),
@@ -148,18 +158,19 @@ export function track(
     clientEventId,
     occurredAt: new Date().toISOString(),
   });
-  const existing = queue(sessionId);
-  if (!existing.some((item) => item.clientEventId === clientEventId))
-    saveTab(`chachat:events:${sessionId}`, [...existing, next]);
+  await migrateLegacyEvents(sessionId);
+  await enqueueEvents(sessionId, [next]);
   return flushEvents(sessionId);
 }
 export function flushEvents(sessionId: string): Promise<void> {
   const current = drains.get(sessionId);
   if (current) return current;
   const draining = (async () => {
+    await migrateLegacyEvents(sessionId);
     for (;;) {
-      const event = queue(sessionId)[0];
-      if (!event) return;
+      const queued = await firstQueuedEvent(sessionId);
+      if (!queued) return;
+      const event = queued.event;
       try {
         await api("/events", acceptedSchema, {
           method: "POST",
@@ -176,12 +187,7 @@ export function flushEvents(sessionId: string): Promise<void> {
         if (!permanent) throw error;
         rejectEvent(sessionId, event, error.code);
       }
-      saveTab(
-        `chachat:events:${sessionId}`,
-        queue(sessionId).filter(
-          (item) => item.clientEventId !== event.clientEventId,
-        ),
-      );
+      await removeQueuedEvent(queued.id);
     }
   })().finally(() => {
     drains.delete(sessionId);

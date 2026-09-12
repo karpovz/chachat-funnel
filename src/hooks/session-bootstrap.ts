@@ -2,6 +2,7 @@ import { z } from "zod";
 import { publicSessionSchema } from "@/shared/contracts";
 import { api } from "./funnel-api";
 import { copy } from "@/content/funnel";
+import { initializeEventQueue } from "./event-queue";
 
 const LOCK_NAME = "chachat:session-bootstrap";
 const LEASE_MS = 30000;
@@ -87,8 +88,14 @@ export function bootstrapSession() {
     landingUrl: window.location.href,
     referrer: document.referrer || null,
   };
-  const request = (signal?: AbortSignal) =>
-    api("/session", publicSessionSchema, { method: "POST", body, signal });
+  const request = async (signal?: AbortSignal) => {
+    await initializeEventQueue();
+    return api("/session", publicSessionSchema, {
+      method: "POST",
+      body,
+      signal,
+    });
+  };
   if (navigator.locks?.request)
     return navigator.locks.request(LOCK_NAME, () => request());
   if (typeof indexedDB !== "undefined") return withLease(request);
