@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: chachat
+      POSTGRES_PASSWORD: chachat_local
+      POSTGRES_DB: chachat
+    volumes:
+      - qa_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chachat -d chachat"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://chachat:chachat_local@db:5432/chachat?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      target: runner
+    environment:
+      DATABASE_URL: postgresql://chachat:chachat_local@db:5432/chachat?schema=public
+      APP_ORIGIN: http://localhost:3000
+      COOKIE_SECURE: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/plans').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  qa:
+    profiles: ["tools"]
+    image: ${COMPOSE_PROJECT_NAME}-qa
+    build:
+      context: .
+      target: qa
+    environment:
+      DATABASE_URL: postgresql://chachat:chachat_local@db:5432/chachat?schema=public
+      APP_ORIGIN: http://localhost:3000
+      BASE_URL: http://app:3000
+      RUN_DB_TESTS: "1"
+      CI: "true"
+    shm_size: 1gb
+
+  browser:
+    extends:
+      service: qa
+    # Share the app's loopback so secure browser APIs work with real localhost.
+    # No ports or browser security overrides are needed for this private network.
+    network_mode: service:app
+    environment:
+      BASE_URL: http://localhost:3000
+
+volumes:
+  qa_postgres:

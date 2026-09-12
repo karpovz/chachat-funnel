@@ -13,6 +13,17 @@ FROM dependencies AS builder
 COPY . .
 RUN pnpm db:generate && mkdir -p public && pnpm build
 
+FROM dependencies AS development
+COPY . .
+# Bind mounts can be on a different filesystem: keep pnpm on the image's store.
+CMD ["sh", "-c", "CI=true pnpm install --offline --frozen-lockfile --store-dir /root/.local/share/pnpm/store --reporter=append-only && pnpm db:generate && pnpm dev --hostname 0.0.0.0"]
+
+# The test runner uses the exact Playwright/browser version from the lockfile.
+FROM dependencies AS qa
+RUN pnpm exec playwright install --with-deps chromium
+COPY . .
+RUN pnpm db:generate
+
 # This short-lived service completes before the application starts.
 FROM dependencies AS migrate
 COPY prisma ./prisma

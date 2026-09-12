@@ -30,13 +30,13 @@ The volume reset permanently deletes this Compose project's saved demo data. Cle
 5. For a decline or timeout, retry with the success card. A successful purchase unlocks the App Store link. Refresh preserves server-known progress and payment state.
 6. In another private browser context, complete the quiz with the same email to inspect identity merging and the SQL below.
 
-| Test card | Result |
-| --- | --- |
-| `4242424242424242` | Success |
-| `4000000000000002` | Decline; a new attempt can retry |
-| `4000000000009995` | Bounded simulated timeout; a new attempt can retry |
-| Other Luhn-valid numbers | Success |
-| Invalid card, expiry, or CVC | Validation error before processing |
+| Test card                    | Result                                             |
+| ---------------------------- | -------------------------------------------------- |
+| `4242424242424242`           | Success                                            |
+| `4000000000000002`           | Decline; a new attempt can retry                   |
+| `4000000000009995`           | Bounded simulated timeout; a new attempt can retry |
+| Other Luhn-valid numbers     | Success                                            |
+| Invalid card, expiry, or CVC | Validation error before processing                 |
 
 Use only test data. Card fields remain transient; only card brand and last four digits are persisted.
 
@@ -46,56 +46,74 @@ Next.js App Router serves the interface and thin API routes. Zod validates exter
 
 The browser begins anonymously with HTTP-only, same-site visitor/session cookies. Acquisition context is recorded when the session is first created. Email is trimmed and lowercased; transactional resolution reuses an existing normalized email and attaches the current session. The authoritative history joins `users ← funnel_sessions ← events`, so pre-email actions remain queryable after resolution. Reassigning an email does not rewrite older sessions.
 
+First initialization is serialized across tabs with Web Locks (IndexedDB coordination is the fallback). Later API calls include the expected session ID as an additional consistency check; cookies still authorize access. A changed cookie session is rejected instead of receiving another tab's history. Sessions, including successful checkout, resume for the 90-day absolute cookie lifetime. Tomorrow's visit resumes its original acquisition; cookie expiry/reset starts another anonymous session. Breaking quiz-version changes require an explicit migration or restart policy.
+
 Client analytics use stable UUID delivery IDs with a database unique constraint. Server-owned identity, quiz, and payment events use server timestamps. Event properties are restricted so checkout secrets and email cannot be copied into analytics. Prices and purchase snapshots come from database plans.
+
+Automatic plan selection is recorded once per session with `source=default`; manual choices use `source=manual`. Permanently invalid analytics events produce bounded diagnostics containing only their ID/name and a fixed rejection code, and later valid events continue. Network and session failures retain events for recovery. Confirming age uses a separate transactional API call, so an analytics backlog cannot block the funnel.
 
 ## Payment consistency
 
 A unique session constraint allows one purchase per funnel session. Transactions serialize competing purchase claims; a partial unique index permits one processing attempt per purchase. Each attempt has a globally unique idempotency key. Replaying a key returns its stored attempt outcome, while a new key can retry a failed purchase. Success is terminal. The current-purchase endpoint recovers processing/final state after refresh. The simulator deadline is 1.5 seconds; polling recovers attempts left processing by a crash after 15 seconds. The plan and email become fixed once checkout starts; re-submitting the same normalized email remains safe.
 
+Pending attempt keys and their selected plan stay in per-tab session storage. Even a refresh before the first server claim retains the same plan and key for recovery. Request generations and attempt numbers prevent an old poll from replacing a newer attempt or clearing its key. Payment responses include the authoritative purchase-owner email used on Install. A reserved purchase keeps its price and remains retryable when its live plan is deactivated; new purchases can use only active plans.
+
 Local Compose explicitly permits cookies over HTTP. HTTPS deployments must use secure cookies. This is a demo identity flow, not authentication or proof of email ownership.
 
 ## Development and checks
 
-Use **Linux-native Node.js 22 and pnpm 10.15.0**, including inside WSL; avoid Windows executables against a WSL UNC path. The lockfile is committed.
+The complete verification requires only Docker and a POSIX shell:
 
 ```sh
+sh scripts/qa.sh
+sh scripts/qa.sh audit
+```
+
+The first command creates a unique disposable Compose project with its own database and no published ports. It builds the production app, applies migrations, checks formatting/types/lint, runs unit and PostgreSQL invariants, API/persistence smoke, mobile Chromium regressions, all README SQL, and the log privacy scan. The database tests finish before browser tests start. Its containers and volumes are cleaned on completion/failure; the regular application's database is never used. The second command checks the dependency advisory database and fails on high/critical findings. GitHub Actions runs these same commands for pushes and pull requests.
+
+For Docker development with hot reload:
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml up --build
+```
+
+This exposes the app at localhost:3000 and the database at **127.0.0.1:15432**. Dependencies and `.next` live in container volumes. Changes to source refresh automatically. After changing dependencies, rerun the same `up --build` command: startup installs from the rebuilt image's pnpm store without a network request or interactive prompt. Stop it with `docker compose -f compose.yaml -f compose.dev.yaml down`.
+
+For host tools, use **Linux-native Node.js 22 and pnpm 10.15.0**, including inside WSL. The lockfile is committed. Start just the development database and use the example environment for the host application:
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml up -d db
+cp .env.example .env
 pnpm install --frozen-lockfile
 pnpm db:generate
+pnpm db:migrate
+pnpm dev
+```
+
+Useful focused checks:
+
+```sh
+pnpm format:check
 pnpm typecheck
 pnpm lint
 pnpm test
 pnpm build
 ```
 
-`pnpm test` runs the processor unit tests and skips database tests unless `RUN_DB_TESTS=1` is set. After Compose is healthy, run the API/persistence and log checks:
-
-```sh
-docker compose run --rm -e BASE_URL=http://app:3000 migrate node scripts/smoke.mjs
-node scripts/check-compose-logs.mjs
-```
-
-The smoke script retains tagged demo evidence. For the PostgreSQL invariant suite, use the disposable Compose database:
-
-```sh
-docker compose run --rm -e RUN_DB_TESTS=1 \
-  -v "$PWD/src:/app/src:ro" -v "$PWD/tests:/app/tests:ro" \
-  -v "$PWD/vitest.config.ts:/app/vitest.config.ts:ro" migrate pnpm test
-```
-
-These tests remove their own fixtures; one temporarily changes and restores a seeded plan price to verify snapshot immutability. Run them separately from browser tests.
+`pnpm test` runs unit checks and intentionally skips PostgreSQL tests unless `RUN_DB_TESTS=1` is set. Use `sh scripts/qa.sh` for the complete suite instead of pointing mutation tests at the regular database. The snapshot test creates its own temporary plan; seeded catalog prices remain unchanged.
 
 ```sh
 pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-Browser tests use mobile Chromium. They cover the full funnel, guarded install, answer persistence, decline/timeout retry, and refresh during processing. On a minimal Linux host, install Chromium's system dependencies with `pnpm exec playwright install --with-deps chromium`.
+Browser tests cover the full funnel, guarded install, answer persistence, decline/timeout retry, refresh during processing, concurrent first tabs (including IndexedDB fallback), stale payment responses, changed email, rejected analytics, default selection, reserved plans, and browser Back/Forward. The Docker QA image installs the exact browser matching Playwright. For a host-only run on minimal Linux, install system dependencies with `pnpm exec playwright install --with-deps chromium` and set `BASE_URL` to a disposable test app.
 
-For local development, set `DATABASE_URL` to a reachable PostgreSQL database, run `pnpm db:migrate`, then `pnpm dev`. Compose's database hostname `db` resolves only inside its Docker network.
+Prisma remains pinned to 6.19.3. A scoped pnpm override updates only its config loader's `deepmerge-ts` to 8.0.0 to fix GHSA-ggr8-5vv4-36mx. The used plain-record merge API is covered by cyclic-input and real config-loading regression tests; generation/migrations/build are also verified. Remove the override when upstream incorporates the fix. No security advisory is suppressed. Stable Prisma 7.10.0 still used the affected dependency when this decision was made; changing ORM major alone did not resolve it.
 
 ## Verification evidence
 
-Verified on 2026-09-11: clean default Compose startup with automatic migrations; production build, lint and typecheck; 26 unit/PostgreSQL tests; API/persistence acceptance smoke; three mobile Chromium scenarios; five README SQL queries; and the Compose log secret scan. See [the handoff](docs/HANDOFF.md) for environment details and [the workflow log](docs/AI_WORKFLOW.md) for integration decisions.
+Verified after audit fixes on 2026-09-11: the full isolated Docker QA command passed with production build, automatic migrations, formatting, lint/typecheck, **39 unit/PostgreSQL tests**, API/persistence smoke, **12 mobile Chromium scenarios**, five README SQL queries, and the Compose log secret scan. The Docker development profile also passed startup and live source-update checks. See [the remediation report](docs/REMEDIATION.md), [the handoff](docs/HANDOFF.md), and [the workflow log](docs/AI_WORKFLOW.md).
 
 ## Analytics SQL
 

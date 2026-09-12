@@ -2,6 +2,7 @@
   "name": "chachat-funnel",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.15.0",
   "engines": {
     "node": "22.x"
@@ -11,7 +12,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "qa": "sh scripts/qa.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "prisma generate",
@@ -34,10 +38,14 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
     "prisma": "6.19.3",
+    "prettier": "3.9.6",
     "typescript": "5.9.3",
     "vitest": "5.0.0"
   },
   "pnpm": {
+    "overrides": {
+      "@prisma/config@6.19.3>deepmerge-ts": "8.0.0"
+    },
     "onlyBuiltDependencies": [
       "@prisma/client",
       "@prisma/engines",

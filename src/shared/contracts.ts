@@ -1,26 +1,10 @@
 import { z } from "zod";
-
-export const FUNNEL_VERSION = "character-match-v1";
-
-export const funnelScreens = [
-  "landing",
-  "intent",
-  "character_type",
-  "interaction_mode",
-  "memory",
-  "usage_moment",
-  "email",
-  "paywall",
-  "install",
-] as const;
-
-export const questionIds = [
-  "intent",
-  "character_type",
-  "interaction_mode",
-  "memory",
-  "usage_moment",
-] as const;
+import { funnelScreens, questionIds } from "./funnel-definition";
+export {
+  FUNNEL_VERSION,
+  funnelScreens,
+  questionIds,
+} from "./funnel-definition";
 
 export const eventNames = [
   "session_started",
@@ -48,7 +32,9 @@ export const publicSessionSchema = z.object({
   currentStep: funnelScreenSchema,
   email: z.string().email().nullable(),
   answers: z.record(z.string(), z.array(z.string())),
-  purchaseStatus: z.enum(["created", "processing", "succeeded", "failed"]).nullable(),
+  purchaseStatus: z
+    .enum(["created", "processing", "succeeded", "failed"])
+    .nullable(),
 });
 
 export const clientEventInputSchema = z.object({
@@ -63,7 +49,12 @@ export const clientEventInputSchema = z.object({
     "purchase_failed",
   ]),
   screen: funnelScreenSchema.optional(),
-  stepIndex: z.number().int().min(0).max(funnelScreens.length - 1).optional(),
+  stepIndex: z
+    .number()
+    .int()
+    .min(0)
+    .max(funnelScreens.length - 1)
+    .optional(),
   occurredAt: z.string().datetime(),
   properties: z.record(z.string(), z.unknown()).default({}),
 });
@@ -75,6 +66,9 @@ export const quizAnswerInputSchema = z.object({
 export const emailInputSchema = z.object({
   email: z.string().trim().email().max(320),
 });
+
+export const ageInputSchema = z.object({ clientEventId: z.string().uuid() });
+export const acceptedEventSchema = z.object({ accepted: z.literal(true) });
 
 export const planSchema = z.object({
   id: z.string().uuid(),
@@ -101,6 +95,8 @@ export const purchaseInputSchema = z.object({
 
 export const purchaseResultSchema = z.object({
   purchaseId: z.string().uuid(),
+  planId: z.string().uuid(),
+  email: z.string().email(),
   planSlug: z.string(),
   planName: z.string(),
   amountMinor: z.number().int().positive(),
@@ -108,6 +104,8 @@ export const purchaseResultSchema = z.object({
   billingDescription: z.string(),
   status: z.enum(["processing", "succeeded", "failed"]),
   attemptNumber: z.number().int().positive().nullable(),
+  attemptId: z.string().uuid().nullable(),
+  idempotencyKey: z.string().uuid().nullable(),
   failureCode: z.string().nullable(),
   message: z.string().nullable(),
 });

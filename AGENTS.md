@@ -38,6 +38,7 @@ Build the ChaChat assessment funnel described in `docs/SPEC.md`. Correct identit
 - Prefer database constraints over client-only or process-local guards.
 - Make migrations deterministic and safe on an empty database.
 - Do not introduce a dependency without approval from the primary integrator.
+- Use `src/shared/funnel-definition.ts` as the single source of quiz order and accepted answer IDs. Breaking question changes require an explicit funnel-version migration/restart decision.
 - Preserve the package manager and lockfile chosen during scaffold.
 
 ## Testing priorities
@@ -66,3 +67,4 @@ Test behavior, not implementation details. Highest-value cases are:
 
 A task is not complete merely because it compiles. It must satisfy its relevant acceptance scenarios in `docs/SPEC.md`, preserve the invariants above, and include focused verification.
 
+Run `sh scripts/qa.sh` for the complete isolated Docker verification before handoff. CI uses the same command; `pnpm test` alone intentionally skips PostgreSQL tests. Run `sh scripts/qa.sh audit` after dependency changes. Never run mutating tests against the ordinary application database. Format changed source with `pnpm format`; the QA gate enforces `pnpm format:check`.
